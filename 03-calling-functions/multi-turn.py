@@ -1,183 +1,168 @@
-"""
-Email validation system
-
-This example demonstrates a single function implementation for email validation
-"""
-
 from google import genai
 from google.genai import types
-import re
 
-GEMINI_MODEL = "gemini-2.5-flash"
-
-client = genai.Client()
-
-# Declare the function
-validate_email_declaration = {
-    "name": "validate_email",
-    "description": "Validates an email address and provides detailed information about its format and components",
+# Step 1: Define function declarations
+check_balance_declaration = {
+    "name": "check_balance",
+    "description": "Checks the account balance for a given account ID",
     "parameters": {
         "type": "object",
         "properties": {
-            "email": {
+            "account_id": {
                 "type": "string",
-                "description": "The email address to validate (e.g., 'user@example.com')",
-            },
-            "check_domain": {
-                "type": "boolean",
-                "description": "Whether to perform additional domain format checks (default: true)",
-                "default": True
-            },
+                "description": "The account ID to check (e.g., 'ACC123')",
+            }
         },
-        "required": ["email"],
+        "required": ["account_id"],
     },
 }
 
-# Define the function
-def validate_email(email: str, check_domain: bool = True) -> dict:
-    """Validate email address and return detailed analysis"""
-    
-    # Basic email regex pattern
-    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    
-    result = {
-        "email": email,
-        "is_valid": False,
-        "local_part": "",
-        "domain": "",
-        "issues": []
+transfer_money_declaration = {
+    "name": "transfer_money",
+    "description": "Transfers money between accounts",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "from_account": {
+                "type": "string",
+                "description": "Source account ID",
+            },
+            "to_account": {
+                "type": "string",
+                "description": "Destination account ID",
+            },
+            "amount": {
+                "type": "number",
+                "description": "Amount to transfer",
+            }
+        },
+        "required": ["from_account", "to_account", "amount"],
+    },
+}
+
+# Step 2: Implement functions
+def check_balance(account_id: str) -> dict:
+    """Mock function to check account balance"""
+    balances = {
+        "ACC123": 1500.00,
+        "ACC456": 800.00,
+        "ACC789": 2200.00
     }
     
-    # Check if email matches basic pattern
-    if re.match(email_pattern, email):
-        result["is_valid"] = True
-        local_part, domain = email.split('@', 1)
-        result["local_part"] = local_part
-        result["domain"] = domain
-        
-        # Additional checks if requested
-        if check_domain:
-            if len(local_part) > 64:
-                result["issues"].append("Local part exceeds 64 characters")
-                result["is_valid"] = False
-            
-            if len(domain) > 253:
-                result["issues"].append("Domain exceeds 253 characters")
-                result["is_valid"] = False
-                
-            if '..' in domain:
-                result["issues"].append("Domain contains consecutive dots")
-                result["is_valid"] = False
-    else:
-        result["issues"].append("Invalid email format")
-        
-        # Try to identify specific issues
-        if '@' not in email:
-            result["issues"].append("Missing @ symbol")
-        elif email.count('@') > 1:
-            result["issues"].append("Multiple @ symbols")
-        elif not email.split('@')[-1]:
-            result["issues"].append("Missing domain")
-        elif '.' not in email.split('@')[-1]:
-            result["issues"].append("Domain missing top-level domain")
-    
-    # Summary message
-    if result["is_valid"]:
-        result["summary"] = f"✅ '{email}' is a valid email address"
-    else:
-        result["summary"] = f"❌ '{email}' is not valid: {', '.join(result['issues'])}"
-    
-    return result
+    balance = balances.get(account_id, 0.00)
+    return {
+        "account_id": account_id,
+        "balance": balance,
+        "currency": "USD"
+    }
 
-# Set up the tool 
-# this is required for function declarations, not needed for automatic FC
-tools = types.Tool(function_declarations=[validate_email_declaration])
+def transfer_money(from_account: str, to_account: str, amount: float) -> dict:
+    """Mock function to transfer money"""
+    return {
+        "transaction_id": "TXN987654",
+        "from_account": from_account,
+        "to_account": to_account,
+        "amount": amount,
+        "status": "completed",
+        "fee": 2.50
+    }
 
-# Add the tool to the model generation configuration
-config = types.GenerateContentConfig(
-    tools = [tools]
+# Step 3: Set up Gemini
+client = genai.Client()
+tools = types.Tool(function_declarations=[check_balance_declaration, transfer_money_declaration])
+config = types.GenerateContentConfig(tools=[tools])
+
+print("=== MULTI-TURN FUNCTION CALLING DEMO ===\n")
+
+# Step 4: Start a conversation that will require multiple function calls
+conversation_history = []
+
+# First turn
+print("TURN 1: User asks for balance check")
+print("-" * 40)
+user_message1 = "What's the balance in account ACC123?"
+
+conversation_history.append(
+    types.Content(role="user", parts=[types.Part(text=user_message1)])
 )
 
-# Configure the content to send a user message with a single text Part (The Prompt) 
-valid_email_prompt = "Can you check if 'john.doe@company-mail.com' is a valid email address? I want to make sure it's properly formatted."
-
-invalid_email_prompt = "Please check if the email 'jdub@@company' is valid"
-
-contents = [
-    types.Content(
-        role="user",
-        parts=[
-            types.Part(
-                text=invalid_email_prompt
-            )
-        ]
-    )
-]
-
-print("=== EMAIL VALIDATION ASSISTANT ===\n")
-response = client.models.generate_content(
-    model=GEMINI_MODEL,
-    contents = contents,
-    config = config,
+response1 = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=conversation_history,
+    config=config,
 )
 
-# Get the function call suggestion from the model's response
-print("Model's function call suggestion:")
-function_call = response.candidates[0].content.parts[0].function_call
+# Process first function call
+function_call1 = response1.candidates[0].content.parts[0].function_call
+print(f"Function called: {function_call1.name}")
+print(f"Arguments: {dict(function_call1.args)}")
 
-# Get the function's name
-function_name = function_call.name
-print(f"Function Name: {function_name}")
+result1 = check_balance(**function_call1.args)
 
-# Get the suggested arguments
-function_arguments = function_call.args
-print(f"Function Arguments: {dict(function_arguments)}")
-
-# Execute the function with the delivered arguments
-
-if function_name == "validate_email":
-    result = validate_email(**function_arguments)
-
-    # Print out the raw function results
-    print(f"\nEmail Validation Result:")
-    for key, value in result.items():
-        print(f"{key}: {value}")
-    print()
-
-    """
-    Multi-turn starts here
-    """
-
-    # Create a function response part to send the function's results to model
-    # This will consist of the name of the function that was called and the result from it
-    function_response_part = types.Part.from_function_response(
-        name=function_name,
-        response = {
-            "result": result
-        }
-    )
-
-    """ 
-        LLMs are stateless so we need to send it the previous and new conversation
-        Create a conversation history by adding the model's response and our function result to the initial "contents" prompt setup
-    """
-
-    # Model's response (function call suggestion)
-    contents.append(response.candidates[0].content) 
-    # Function call result
-    contents.append(
-        types.Content(
-            role="user",
-            parts= [function_response_part]
+# Add model response and function result to history
+conversation_history.append(response1.candidates[0].content)
+conversation_history.append(
+    types.Content(role="user", parts=[
+        types.Part.from_function_response(
+            name=function_call1.name,
+            response={"result": result1}
         )
-    )
+    ])
+)
 
-    # Use the new prompt history to generate a friendly response from the model
-    final_response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        config=config, # Use the same configuration
-        contents=contents
-    )
+# Get model's response after function execution
+final_response1 = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=conversation_history,
+    config=config,
+)
 
-    print("Final response to the user")
-    print(final_response.text)
+print(f"Model response: {final_response1.text}")
+conversation_history.append(final_response1.candidates[0].content)
+
+print("\n" + "="*50)
+
+# Second turn - user asks for transfer
+print("TURN 2: User requests money transfer")
+print("-" * 40)
+user_message2 = "Transfer $200 from ACC123 to ACC456"
+
+conversation_history.append(
+    types.Content(role="user", parts=[types.Part(text=user_message2)])
+)
+
+response2 = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=conversation_history,
+    config=config,
+)
+
+# Process second function call
+function_call2 = response2.candidates[0].content.parts[0].function_call
+print(f"Function called: {function_call2.name}")
+print(f"Arguments: {dict(function_call2.args)}")
+
+result2 = transfer_money(**function_call2.args)
+
+# Add to conversation history
+conversation_history.append(response2.candidates[0].content)
+conversation_history.append(
+    types.Content(role="user", parts=[
+        types.Part.from_function_response(
+            name=function_call2.name,
+            response={"result": result2}
+        )
+    ])
+)
+
+# Get final response
+final_response2 = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=conversation_history,
+    config=config,
+)
+
+print(f"Model response: {final_response2.text}")
+conversation_history.append(final_response2.candidates[0].content)
+
+print("\n" + "="*50)

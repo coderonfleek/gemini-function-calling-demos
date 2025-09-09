@@ -138,46 +138,7 @@ print(f"Function Arguments: {dict(function_arguments)}")
 if function_name == "validate_email":
     result = validate_email(**function_arguments)
 
-    # Print out the raw function results
     print(f"\nEmail Validation Result:")
     for key, value in result.items():
         print(f"{key}: {value}")
     print()
-
-    """
-    Multi-turn starts here
-    """
-
-    # Create a function response part to send the function's results to model
-    # This will consist of the name of the function that was called and the result from it
-    function_response_part = types.Part.from_function_response(
-        name=function_name,
-        response = {
-            "result": result
-        }
-    )
-
-    """ 
-        LLMs are stateless so we need to send it the previous and new conversation
-        Create a conversation history by adding the model's response and our function result to the initial "contents" prompt setup
-    """
-
-    # Model's response (function call suggestion)
-    contents.append(response.candidates[0].content) 
-    # Function call result
-    contents.append(
-        types.Content(
-            role="user",
-            parts= [function_response_part]
-        )
-    )
-
-    # Use the new prompt history to generate a friendly response from the model
-    final_response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        config=config, # Use the same configuration
-        contents=contents
-    )
-
-    print("Final response to the user")
-    print(final_response.text)
